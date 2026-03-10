@@ -43,11 +43,14 @@ function getPartnerPreds(rep) {
   return rawData.partnerPreds.filter(p => ids.has(p.dealId));
 }
 
-function getOpenDeals(rep) {
-  return {
-    assess: getAssessDeals(rep).filter(d => d.status === 'Open'),
-    partner: getPartnerDeals(rep).filter(d => d.status === 'Open'),
-  };
+function getOpenDeals(rep, forecastOnly = false) {
+  let a = getAssessDeals(rep).filter(d => d.status === 'Open');
+  let p = getPartnerDeals(rep).filter(d => d.status === 'Open');
+  if (forecastOnly) {
+    a = a.filter(d => d.inCurrentForecast);
+    p = p.filter(d => d.inCurrentForecast);
+  }
+  return { assess: a, partner: p };
 }
 function getClosedDeals(rep, filters) {
   let a = getAssessDeals(rep).filter(d => d.status === 'Closed');
@@ -117,23 +120,25 @@ function getDealPredictionHistory(dealId) {
 }
 
 function getRepPipelineForecast(rep) {
-  const open = getOpenDeals(rep);
+  const allOpen = getOpenDeals(rep, false);
+  const forecastOpen = getOpenDeals(rep, true);
   return {
-    assessOpen: open.assess.length, partnerOpen: open.partner.length,
-    assessRaw: open.assess.reduce((s, d) => s + num(d.predictedValue), 0),
-    partnerRaw: open.partner.reduce((s, d) => s + num(d.totalValue), 0),
-    totalRaw: open.assess.reduce((s, d) => s + num(d.predictedValue), 0) + open.partner.reduce((s, d) => s + num(d.totalValue), 0),
-    assessWeighted30: open.assess.reduce((s, d) => s + num(d.predictedValue) * num(d.current30), 0),
-    assessWeighted60: open.assess.reduce((s, d) => s + num(d.predictedValue) * num(d.current60), 0),
-    partnerWeighted30: open.partner.reduce((s, d) => s + num(d.totalValue) * num(d.current30), 0),
-    partnerWeighted60: open.partner.reduce((s, d) => s + num(d.totalValue) * num(d.current60), 0),
+    assessOpenAll: allOpen.assess.length, partnerOpenAll: allOpen.partner.length,
+    assessOpenForecast: forecastOpen.assess.length, partnerOpenForecast: forecastOpen.partner.length,
+    assessRaw: forecastOpen.assess.reduce((s, d) => s + num(d.predictedValue), 0),
+    partnerRaw: forecastOpen.partner.reduce((s, d) => s + num(d.totalValue), 0),
+    totalRaw: forecastOpen.assess.reduce((s, d) => s + num(d.predictedValue), 0) + forecastOpen.partner.reduce((s, d) => s + num(d.totalValue), 0),
+    assessWeighted30: forecastOpen.assess.reduce((s, d) => s + num(d.predictedValue) * num(d.current30), 0),
+    assessWeighted60: forecastOpen.assess.reduce((s, d) => s + num(d.predictedValue) * num(d.current60), 0),
+    partnerWeighted30: forecastOpen.partner.reduce((s, d) => s + num(d.totalValue) * num(d.current30), 0),
+    partnerWeighted60: forecastOpen.partner.reduce((s, d) => s + num(d.totalValue) * num(d.current60), 0),
     get totalWeighted30() { return this.assessWeighted30 + this.partnerWeighted30; },
     get totalWeighted60() { return this.assessWeighted60 + this.partnerWeighted60; },
   };
 }
 
 function getRepCommissionForecast(rep, closeBoostPct = 0, manualCloseIds = []) {
-  const open = getOpenDeals(rep);
+  const allOpen = getOpenDeals(rep, false);
   const boost = closeBoostPct / 100;
   const manualSet = new Set(manualCloseIds);
   const items = [];
@@ -142,8 +147,10 @@ function getRepCommissionForecast(rep, closeBoostPct = 0, manualCloseIds = []) {
     const pipeline = d.pipeline || 'Cold';
     const rate = COMMISSION_RATES[pipeline] || 0.035;
     const isManualClose = manualSet.has(d.id);
-    const base30 = isManualClose ? 1 : num(d.current30);
-    const boosted30 = isManualClose ? 1 : Math.min(base30 + boost, 1);
+    const inForecast = d.inCurrentForecast;
+    // Only use close % for deals in current forecast (or manual closes)
+    const base30 = isManualClose ? 1 : (inForecast ? num(d.current30) : 0);
+    const boosted30 = isManualClose ? 1 : (inForecast ? Math.min(base30 + boost, 1) : 0);
     const val = type === 'Assessment' ? num(d.predictedValue) : num(d.totalValue);
     items.push({
       id: d.id, name: d.name, type, pipeline, value: val,
@@ -151,12 +158,12 @@ function getRepCommissionForecast(rep, closeBoostPct = 0, manualCloseIds = []) {
       closeChance: base30, boostedChance: boosted30, rate,
       baseCommission: val * base30 * rate,
       boostedCommission: val * boosted30 * rate,
-      manualClose: isManualClose,
+      manualClose: isManualClose, inCurrentForecast: inForecast,
     });
   };
 
-  open.assess.forEach(d => addDeal(d, 'Assessment', 'predictedValue'));
-  open.partner.forEach(d => addDeal(d, 'Partnership', 'totalValue'));
+  allOpen.assess.forEach(d => addDeal(d, 'Assessment', 'predictedValue'));
+  allOpen.partner.forEach(d => addDeal(d, 'Partnership', 'totalValue'));
 
   const totalBase = items.reduce((s, i) => s + i.baseCommission, 0);
   const totalBoosted = items.reduce((s, i) => s + i.boostedCommission, 0);
@@ -190,10 +197,15 @@ function getAvailableYears() {
   return [...new Set(dates.map(d => getYear(d)))].filter(Boolean).sort();
 }
 
+function getCurrentForecastPeriod() {
+  return rawData.currentForecastPeriod || { assess: 'Unknown', partner: 'Unknown' };
+}
+
 export {
   REPS, COMMISSION_RATES, PIPELINES, num, withMonthsOpen,
   getAssessDeals, getPartnerDeals, getAssessPreds, getPartnerPreds,
   getOpenDeals, getClosedDeals, getRepStats, getAllRepStats,
   getDealPredictionHistory, getRepPipelineForecast, getRepCommissionForecast,
   getPredictedVsActual, getAvailableYears, getYear, getMonth, getQuarter,
+  getCurrentForecastPeriod,
 };
