@@ -1,16 +1,17 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { getAllRepStats, getAvailableYears, REPS } from '@/data/utils';
-import { SectionHeader, fmt, pct, Select, FilterBar } from '@/components/ui';
+import { getAllRepStats, getAvailableYears, REPS, getRepPipelineForecast, getMomentum, getWinStreak, getRevenueVelocity, getForecastAccuracy, getPipelineCoverage } from '@/data/utils';
+import { SectionHeader, fmt, pct, Select, FilterBar, Badge } from '@/components/ui';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 
-const MONTHS = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+const MO=['','January','February','March','April','May','June','July','August','September','October','November','December'];
 
 export default function Scoreboard() {
   const [user, setUser] = useState(null);
   const [year, setYear] = useState('');
   const [quarter, setQuarter] = useState('');
   const [month, setMonth] = useState('');
+  const [pipeFilter, setPipeFilter] = useState('all');
   useEffect(() => { setUser(localStorage.getItem('harbinger_user')); }, []);
   if (!user) return null;
 
@@ -18,73 +19,94 @@ export default function Scoreboard() {
   if (year) filters.year = parseInt(year);
   if (quarter) filters.quarter = parseInt(quarter);
   if (month) filters.month = parseInt(month);
-  const hasFilters = Object.keys(filters).length > 0;
+  const hf = Object.keys(filters).length > 0;
+  const pf = pipeFilter === 'all' ? undefined : pipeFilter;
 
-  const stats = getAllRepStats(hasFilters ? filters : undefined);
+  const stats = getAllRepStats(hf ? filters : undefined, pf);
   const years = getAvailableYears();
-
-  const revenueData = stats.map(s => ({ name: s.rep.split(' ')[0], 'Assessment': s.assessClosedRevenue, 'Partnership': s.partnerClosedRevenue }));
-  const closesData = stats.map(s => ({ name: s.rep.split(' ')[0], 'Assess Closes': s.assessClosed, 'Partner Closes': s.partnerClosed }));
-  const sorted = [...stats].sort((a, b) => b.totalRevenue - a.totalRevenue);
-  const filterLabel = hasFilters ? ` (${year||'All'}${quarter ? ' Q'+quarter : ''}${month ? ' '+MONTHS[month] : ''})` : '';
   const isAdmin = localStorage.getItem('harbinger_role') === 'admin';
-  const currentUser = isAdmin ? null : user;
+
+  // Per-rep advanced metrics
+  const repMetrics = REPS.map(r => {
+    const s = stats.find(x => x.rep === r) || {};
+    const f = getRepPipelineForecast(r, pf);
+    const m = getMomentum(r);
+    const ws = getWinStreak(r);
+    const rv = getRevenueVelocity(r);
+    const fa = getForecastAccuracy(r);
+    const pc = getPipelineCoverage(r);
+    return { ...s, forecast: f, momentum: m, winStreak: ws, velocity: rv, accuracy: fa, coverage: pc };
+  });
+
+  const revenueData = stats.map(s => ({ name: s.rep.split(' ')[0], Assessment: s.assessClosedRevenue, Partnership: s.partnerClosedRevenue }));
+  const sorted = [...repMetrics].sort((a, b) => b.totalRevenue - a.totalRevenue);
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-harbinger-900 mb-6">Rep Scoreboard{filterLabel}</h1>
+      <h1 className="text-2xl font-bold text-harbinger-900 mb-6">Rep Scoreboard</h1>
       <FilterBar>
-        <Select label="Year" value={year} onChange={v => { setYear(v); if (!v) { setQuarter(''); setMonth(''); }}}
-          options={[{value:'',label:'All Time'}, ...years.map(y => ({value:String(y),label:String(y)}))]} />
-        {year && <Select label="Quarter" value={quarter} onChange={v => { setQuarter(v); if (v) setMonth(''); }}
-          options={[{value:'',label:'All'},{value:'1',label:'Q1'},{value:'2',label:'Q2'},{value:'3',label:'Q3'},{value:'4',label:'Q4'}]} />}
-        {year && !quarter && <Select label="Month" value={month} onChange={setMonth}
-          options={[{value:'',label:'All'}, ...MONTHS.slice(1).map((m,i) => ({value:String(i+1),label:m}))]} />}
-        {hasFilters && <button onClick={() => { setYear(''); setQuarter(''); setMonth(''); }} className="text-sm text-red-500 hover:text-red-700 mt-5">Clear Filters</button>}
+        <Select label="Pipeline" value={pipeFilter} onChange={setPipeFilter} options={[{value:'all',label:'All'},{value:'Warm',label:'Warm'},{value:'Cold',label:'Cold'},{value:'Brave Digital',label:'Brave Digital'}]} />
+        <Select label="Year" value={year} onChange={v=>{setYear(v);if(!v){setQuarter('');setMonth('');}}} options={[{value:'',label:'All Time'},...years.map(y=>({value:String(y),label:String(y)}))]} />
+        {year && <Select label="Quarter" value={quarter} onChange={v=>{setQuarter(v);if(v)setMonth('');}} options={[{value:'',label:'All'},{value:'1',label:'Q1'},{value:'2',label:'Q2'},{value:'3',label:'Q3'},{value:'4',label:'Q4'}]} />}
+        {year && !quarter && <Select label="Month" value={month} onChange={setMonth} options={[{value:'',label:'All'},...MO.slice(1).map((m,i)=>({value:String(i+1),label:m}))]} />}
+        {(hf||pf)&&<button onClick={()=>{setYear('');setQuarter('');setMonth('');setPipeFilter('all');}} className="text-sm text-red-500 hover:text-red-700 mt-5">Clear</button>}
       </FilterBar>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-md font-semibold text-gray-700 mb-4">Closed Revenue by Rep</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={revenueData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" />
-              <YAxis tickFormatter={v => '$'+(v/1000).toFixed(0)+'k'} /><Tooltip formatter={v => '$'+Math.round(v).toLocaleString()} /><Legend />
-              <Bar dataKey="Assessment" fill="#3b82f6" radius={[4,4,0,0]} /><Bar dataKey="Partnership" fill="#f59e0b" radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-md font-semibold text-gray-700 mb-4">Number of Closes by Rep</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={closesData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend />
-              <Bar dataKey="Assess Closes" fill="#3b82f6" radius={[4,4,0,0]} /><Bar dataKey="Partner Closes" fill="#f59e0b" radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="bg-white rounded-xl shadow p-6 mb-6">
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={revenueData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" />
+            <YAxis tickFormatter={v=>'$'+(v/1000).toFixed(0)+'k'} /><Tooltip formatter={v=>'$'+Math.round(v).toLocaleString()} /><Legend />
+            <Bar dataKey="Assessment" fill="#3b82f6" radius={[4,4,0,0]} /><Bar dataKey="Partnership" fill="#f59e0b" radius={[4,4,0,0]} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
 
       <SectionHeader title="Leaderboard" />
+      <div className="bg-white rounded-xl shadow overflow-x-auto mb-8">
+        <table className="w-full text-sm"><thead><tr className="bg-harbinger-900 text-white">
+          <th className="px-3 py-3 text-left">Rank</th><th className="px-3 py-3 text-left">Rep</th>
+          <th className="px-3 py-3 text-right">A-Closes</th><th className="px-3 py-3 text-right">A-Rev</th><th className="px-3 py-3 text-right">A-Win%</th>
+          <th className="px-3 py-3 text-right">P-Closes</th><th className="px-3 py-3 text-right">P-Rev</th><th className="px-3 py-3 text-right">P-Win%</th>
+          <th className="px-3 py-3 text-right font-bold">Total Rev</th>
+          <th className="px-3 py-3 text-center">Streak</th><th className="px-3 py-3 text-center">Momentum</th>
+        </tr></thead><tbody>
+          {sorted.map((s,i)=>{const cu=!isAdmin&&s.rep===user;return(
+            <tr key={s.rep} className={`${cu?'bg-blue-50 font-semibold':i%2===0?'bg-white':'bg-gray-50'}`}>
+              <td className="px-3 py-3">{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</td>
+              <td className="px-3 py-3">{s.rep}{cu?' (You)':''}</td>
+              <td className="px-3 py-3 text-right">{s.assessClosed}</td><td className="px-3 py-3 text-right">{fmt(s.assessClosedRevenue)}</td><td className="px-3 py-3 text-right">{pct(s.assessWinRate)}</td>
+              <td className="px-3 py-3 text-right">{s.partnerClosed}</td><td className="px-3 py-3 text-right">{fmt(s.partnerClosedRevenue)}</td><td className="px-3 py-3 text-right">{pct(s.partnerWinRate)}</td>
+              <td className="px-3 py-3 text-right font-bold text-harbinger-700">{fmt(s.totalRevenue)}</td>
+              <td className="px-3 py-3 text-center">🔥{s.winStreak}</td>
+              <td className="px-3 py-3 text-center">{s.momentum.trend==='growing'?'📈':s.momentum.trend==='shrinking'?'📉':'➡️'}</td>
+            </tr>);})}
+        </tbody></table>
+      </div>
+
+      {/* Leadership metrics */}
+      <SectionHeader title="Leadership Metrics" />
       <div className="bg-white rounded-xl shadow overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead><tr className="bg-harbinger-900 text-white">
-            <th className="px-4 py-3 text-left">Rank</th><th className="px-4 py-3 text-left">Rep</th>
-            <th className="px-4 py-3 text-right">Assess Closes</th><th className="px-4 py-3 text-right">Assess Revenue</th><th className="px-4 py-3 text-right">Assess Win %</th>
-            <th className="px-4 py-3 text-right">Partner Closes</th><th className="px-4 py-3 text-right">Partner Revenue</th><th className="px-4 py-3 text-right">Partner Win %</th>
-            <th className="px-4 py-3 text-right">Avg Deal</th><th className="px-4 py-3 text-right font-bold">Total Revenue</th>
-          </tr></thead>
-          <tbody>
-            {sorted.map((s, i) => (
-              <tr key={s.rep} className={`${currentUser && s.rep === currentUser ? 'bg-blue-50 font-semibold' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                <td className="px-4 py-3">{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</td>
-                <td className="px-4 py-3">{s.rep}{currentUser && s.rep===currentUser?' (You)':''}</td>
-                <td className="px-4 py-3 text-right">{s.assessClosed}</td><td className="px-4 py-3 text-right">{fmt(s.assessClosedRevenue)}</td><td className="px-4 py-3 text-right">{pct(s.assessWinRate)}</td>
-                <td className="px-4 py-3 text-right">{s.partnerClosed}</td><td className="px-4 py-3 text-right">{fmt(s.partnerClosedRevenue)}</td><td className="px-4 py-3 text-right">{pct(s.partnerWinRate)}</td>
-                <td className="px-4 py-3 text-right">{fmt(s.partnerAvgDeal)}</td>
-                <td className="px-4 py-3 text-right font-bold text-harbinger-700">{fmt(s.totalRevenue)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <table className="w-full text-sm"><thead><tr className="bg-gray-100">
+          <th className="px-3 py-2 text-left font-semibold">Rep</th>
+          <th className="px-3 py-2 text-center font-semibold">Revenue Velocity</th>
+          <th className="px-3 py-2 text-center font-semibold">Avg Days to Close</th>
+          <th className="px-3 py-2 text-center font-semibold">Forecast Accuracy</th>
+          <th className="px-3 py-2 text-center font-semibold">Pipeline Coverage</th>
+          <th className="px-3 py-2 text-right font-semibold">30d Forecast Rev</th>
+          <th className="px-3 py-2 text-right font-semibold">60d Forecast Rev</th>
+        </tr></thead><tbody>
+          {repMetrics.map((r,i)=>(
+            <tr key={r.rep} className={i%2===0?'bg-white':'bg-gray-50'}>
+              <td className="px-3 py-2 font-medium">{r.rep}</td>
+              <td className="px-3 py-2 text-center">{fmt(r.velocity.avgRevPerDay)}/day</td>
+              <td className="px-3 py-2 text-center">{r.velocity.avgDays} days</td>
+              <td className="px-3 py-2 text-center"><Badge text={`${r.accuracy.score}%`} color={r.accuracy.score>=80?'green':r.accuracy.score>=60?'gold':'red'} /></td>
+              <td className="px-3 py-2 text-center"><Badge text={`${r.coverage.ratio.toFixed(1)}x`} color={r.coverage.ratio>=3?'green':r.coverage.ratio>=2?'gold':'red'} /></td>
+              <td className="px-3 py-2 text-right">{fmt(r.forecast.totalW30)}</td>
+              <td className="px-3 py-2 text-right">{fmt(r.forecast.totalW60)}</td>
+            </tr>
+          ))}
+        </tbody></table>
       </div>
     </div>
   );
