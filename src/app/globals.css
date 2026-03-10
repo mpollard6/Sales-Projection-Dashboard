@@ -109,3 +109,24 @@ table tbody tr {
   background: rgba(255, 255, 255, 0.6);
   transform: scaleX(1);
 }
+
+/* Tooltip arrow */
+.calc-tooltip {
+  line-height: 1.5;
+}
+
+/* Modal backdrop blur */
+.modal-backdrop {
+  backdrop-filter: blur(4px);
+}
+
+/* Heatmap cell */
+.heatmap-cell {
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+.heatmap-cell:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 5;
+  position: relative;
+}

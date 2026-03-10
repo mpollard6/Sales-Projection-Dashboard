@@ -5,18 +5,26 @@ import Link from 'next/link';
 
 const NAV_REP = [
   { href: '/dashboard', label: 'My Pipeline', icon: '📊' },
+  { href: '/dashboard/my-forecast', label: 'My Forecast', icon: '🔮' },
+  { href: '/dashboard/forecast', label: 'Forecast Builder', icon: '🛠️' },
   { href: '/dashboard/scoreboard', label: 'Scoreboard', icon: '🏆' },
   { href: '/dashboard/predictions', label: 'Prediction Tracker', icon: '📈' },
   { href: '/dashboard/actuals', label: 'Predicted vs Actual', icon: '🎯' },
   { href: '/dashboard/commission', label: 'Commission Forecast', icon: '💰' },
+  { href: '/dashboard/heatmap', label: 'Pipeline Heatmap', icon: '🗺️' },
+  { href: '/dashboard/goals', label: 'Goal Tracking', icon: '🏁' },
 ];
 const NAV_ADMIN = [
   { href: '/dashboard', label: 'Full Pipeline', icon: '📊' },
+  { href: '/dashboard/forecast', label: 'Forecast Builder', icon: '🛠️' },
   { href: '/dashboard/scoreboard', label: 'Rep Scoreboard', icon: '🏆' },
   { href: '/dashboard/admin', label: 'Rep Deep Dive', icon: '🔍' },
   { href: '/dashboard/predictions', label: 'Prediction Tracker', icon: '📈' },
   { href: '/dashboard/actuals', label: 'Predicted vs Actual', icon: '🎯' },
   { href: '/dashboard/commission', label: 'Commission Modeling', icon: '💰' },
+  { href: '/dashboard/heatmap', label: 'Pipeline Heatmap', icon: '🗺️' },
+  { href: '/dashboard/goals', label: 'Goal Tracking', icon: '🏁' },
+  { href: '/dashboard/data', label: 'Data Manager', icon: '⚙️' },
 ];
 
 export default function DashboardLayout({ children }) {

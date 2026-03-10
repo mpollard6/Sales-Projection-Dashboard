@@ -71,3 +71,31 @@ export function TableWrapper({ children }) {
     </div>
   );
 }
+
+export function CalcTooltip({ formula, children }) {
+  return (
+    <span className="relative group inline-flex items-center gap-1 cursor-help">
+      {children}
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-500 flex-shrink-0">
+        <path fillRule="evenodd" d="M15 8A7 7 0 111 8a7 7 0 0114 0zm-6 3.5a1 1 0 11-2 0 1 1 0 012 0zM7.293 5.293a1 1 0 011.414 0L8 5.586V4.5a.5.5 0 011 0v1.086l.293-.293a1 1 0 111.414 1.414l-2 2a1 1 0 01-1.414 0l-2-2a1 1 0 010-1.414z" clipRule="evenodd" />
+      </svg>
+      <span className="calc-tooltip invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-harbinger-900 text-white text-xs rounded-lg shadow-lg whitespace-pre-line max-w-xs z-50 pointer-events-none">
+        {formula}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-harbinger-900" />
+      </span>
+    </span>
+  );
+}
+
+export function ProgressBar({ value, max, color = 'blue', label, showPct = true }) {
+  const pctVal = max > 0 ? Math.min(value / max, 1) : 0;
+  const colors = { blue: 'bg-blue-500', green: 'bg-emerald-500', gold: 'bg-amber-500', red: 'bg-red-500', purple: 'bg-purple-500', teal: 'bg-teal-500' };
+  return (
+    <div>
+      {label && <div className="flex justify-between text-xs mb-1"><span className="text-gray-600 font-medium">{label}</span>{showPct && <span className="text-gray-500">{(pctVal * 100).toFixed(0)}%</span>}</div>}
+      <div className="w-full bg-gray-200 rounded-full h-2.5">
+        <div className={`h-2.5 rounded-full ${colors[color] || colors.blue}`} style={{ width: `${pctVal * 100}%` }} />
+      </div>
+    </div>
+  );
+}

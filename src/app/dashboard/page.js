@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { getOpenDeals, getRepPipelineForecast, getRepStats, num, withMonthsOpen, getCurrentForecastPeriod, calcWeighted30, calcWeighted60, getMomentum, getWinStreak, getRevByPipeline } from '@/data/utils';
-import { StatCard, SectionHeader, fmt, pct, Select, FilterBar, Badge, SearchInput, EmptyState, TableWrapper } from '@/components/ui';
+import { StatCard, SectionHeader, fmt, pct, Select, FilterBar, Badge, SearchInput, EmptyState, TableWrapper, CalcTooltip } from '@/components/ui';
+import DealModal from '@/components/DealModal';
 
 export default function MyPipeline() {
   const [user, setUser] = useState(null);
@@ -12,6 +13,7 @@ export default function MyPipeline() {
   const [showFilter, setShowFilter] = useState('all');
   const [pipeFilter, setPipeFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [selectedDeal, setSelectedDeal] = useState(null);
   useEffect(() => { setUser(localStorage.getItem('harbinger_user')); setRole(localStorage.getItem('harbinger_role')); }, []);
   if (!user) return null;
 
@@ -50,6 +52,8 @@ export default function MyPipeline() {
 
   return (
     <div>
+      {selectedDeal && <DealModal deal={selectedDeal} onClose={() => setSelectedDeal(null)} />}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
         <div>
           <h1 className="text-2xl font-bold text-harbinger-900">{isAdmin?'Full Pipeline':'My Pipeline'}</h1>
@@ -57,7 +61,6 @@ export default function MyPipeline() {
         </div>
       </div>
 
-      {/* Momentum + Streak */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6 mt-4">
         <div className={`flex-1 rounded-xl p-4 border-2 ${momentum.trend==='growing'?'border-green-400 bg-green-50':momentum.trend==='shrinking'?'border-red-400 bg-red-50':'border-gray-300 bg-gray-50'}`}>
           <p className="text-sm font-semibold text-gray-600">Pipeline Momentum</p>
@@ -71,21 +74,19 @@ export default function MyPipeline() {
         </div>
       </div>
 
-      {/* Split revenue cards: Assessment vs Partnership, 30 vs 60 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Assessment 30d Revenue" value={fmt(forecast.assessW30)} sub={`~${forecast.assessCloses30.toFixed(1)} projected closes`} color="blue" />
-        <StatCard label="Assessment 60d Revenue" value={fmt(forecast.assessW60)} sub={`~${forecast.assessCloses60.toFixed(1)} projected closes`} color="blue" />
-        <StatCard label="Partnership 30d Revenue" value={fmt(forecast.partnerW30)} sub={`~${forecast.partnerCloses30.toFixed(1)} projected closes`} color="gold" />
-        <StatCard label="Partnership 60d Revenue" value={fmt(forecast.partnerW60)} sub={`~${forecast.partnerCloses60.toFixed(1)} projected closes`} color="gold" />
+        <StatCard label={<CalcTooltip formula="Sum of (Predicted Value x 30-Day Close %) for all forecast deals in the 30-Day close window">Assessment 30d Revenue</CalcTooltip>} value={fmt(forecast.assessW30)} sub={`~${forecast.assessCloses30.toFixed(1)} projected closes`} color="blue" />
+        <StatCard label={<CalcTooltip formula="30-Day window deals: Value x Fallback %\n60-Day window deals: Value x Primary %">Assessment 60d Revenue</CalcTooltip>} value={fmt(forecast.assessW60)} sub={`~${forecast.assessCloses60.toFixed(1)} projected closes`} color="blue" />
+        <StatCard label={<CalcTooltip formula="Sum of (Total Value x 30-Day Close %) for forecast partnership deals in the 30-Day window">Partnership 30d Revenue</CalcTooltip>} value={fmt(forecast.partnerW30)} sub={`~${forecast.partnerCloses30.toFixed(1)} projected closes`} color="gold" />
+        <StatCard label={<CalcTooltip formula="30-Day window deals: Value x Fallback %\n60-Day window deals: Value x Primary %">Partnership 60d Revenue</CalcTooltip>} value={fmt(forecast.partnerW60)} sub={`~${forecast.partnerCloses60.toFixed(1)} projected closes`} color="gold" />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Total 30d Revenue" value={fmt(forecast.totalW30)} sub={`~${forecast.totalCloses30.toFixed(1)} closes`} color="teal" />
-        <StatCard label="Total 60d Revenue" value={fmt(forecast.totalW60)} sub={`~${forecast.totalCloses60.toFixed(1)} closes`} color="teal" />
-        <StatCard label="Forecast Pipeline" value={fmt(forecast.totalRaw)} sub={`${forecast.assessOpenForecast} assess + ${forecast.partnerOpenForecast} partner`} color="purple" />
-        <StatCard label="Closed Revenue" value={fmt(stats.totalRevenue)} color="green" />
+        <StatCard label={<CalcTooltip formula="Assessment 30d + Partnership 30d weighted revenue">Total 30d Revenue</CalcTooltip>} value={fmt(forecast.totalW30)} sub={`~${forecast.totalCloses30.toFixed(1)} closes`} color="teal" />
+        <StatCard label={<CalcTooltip formula="Assessment 60d + Partnership 60d weighted revenue">Total 60d Revenue</CalcTooltip>} value={fmt(forecast.totalW60)} sub={`~${forecast.totalCloses60.toFixed(1)} closes`} color="teal" />
+        <StatCard label={<CalcTooltip formula="Sum of raw predicted/total values for all deals currently in the forecast model (before probability weighting)">Forecast Pipeline</CalcTooltip>} value={fmt(forecast.totalRaw)} sub={`${forecast.assessOpenForecast} assess + ${forecast.partnerOpenForecast} partner`} color="purple" />
+        <StatCard label={<CalcTooltip formula="Sum of actual close values for all closed deals (assessment + partnership)">Closed Revenue</CalcTooltip>} value={fmt(stats.totalRevenue)} color="green" />
       </div>
 
-      {/* Pipeline source breakdown */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {Object.entries(revByPipe).map(([pipe,d])=>(
           <div key={pipe} className="bg-white rounded-xl shadow p-4 border-l-4 hover:shadow-md" style={{borderLeftColor:pipe==='Warm'?'#f59e0b':pipe==='Brave Digital'?'#8b5cf6':'#3b82f6'}}>
@@ -107,19 +108,22 @@ export default function MyPipeline() {
       </FilterBar>
 
       <SectionHeader title={`Open Assessment Deals (${aOpen.length})`} />
+      <p className="text-xs text-gray-500 -mt-3 mb-4">Click any deal row to see full details, prediction history, and timeline.</p>
       <FilterBar><Select label="Sort" value={sortA} onChange={setSortA} options={sOpts} /></FilterBar>
       {aOpen.length===0?<EmptyState message={q ? 'No deals match your search' : 'No deals to display'} icon="📋" />:(
         <TableWrapper><table className="w-full text-sm"><thead><tr className="bg-gray-100">
           {isAdmin&&<th className="px-3 py-2.5 text-left font-semibold text-gray-600">Owner</th>}
           <th className="px-3 py-2.5 text-left font-semibold text-gray-600">Deal</th><th className="px-3 py-2.5 text-right font-semibold text-gray-600">Value</th>
           <th className="px-3 py-2.5 text-center font-semibold text-gray-600">Pipeline</th><th className="px-3 py-2.5 text-center font-semibold text-gray-600">Window</th>
-          <th className="px-3 py-2.5 text-center font-semibold text-gray-600">Close %</th><th className="px-3 py-2.5 text-center font-semibold text-gray-600">60d %</th>
-          <th className="px-3 py-2.5 text-right font-semibold text-gray-600">30d $</th><th className="px-3 py-2.5 text-right font-semibold text-gray-600">60d $</th>
+          <th className="px-3 py-2.5 text-center font-semibold text-gray-600"><CalcTooltip formula="Primary close probability within the 30-day window">Close %</CalcTooltip></th>
+          <th className="px-3 py-2.5 text-center font-semibold text-gray-600"><CalcTooltip formula="Fallback probability for the extended 60-day window">60d %</CalcTooltip></th>
+          <th className="px-3 py-2.5 text-right font-semibold text-gray-600"><CalcTooltip formula="Value x Close %\nOnly counted for 30-Day window deals">30d $</CalcTooltip></th>
+          <th className="px-3 py-2.5 text-right font-semibold text-gray-600"><CalcTooltip formula="30-Day window: Value x Fallback %\n60-Day window: Value x Primary %">60d $</CalcTooltip></th>
           <th className="px-3 py-2.5 text-center font-semibold text-gray-600">Open</th><th className="px-3 py-2.5 text-center font-semibold text-gray-600">Status</th>
         </tr></thead><tbody>
-          {aOpen.map((d,i)=>(<tr key={d.id} className={`table-row-hover ${!d.inCurrentForecast?'opacity-50':''} ${i%2===0?'bg-white':'bg-gray-50/50'}`}>
+          {aOpen.map((d,i)=>(<tr key={d.id} className={`table-row-hover cursor-pointer ${!d.inCurrentForecast?'opacity-50':''} ${i%2===0?'bg-white':'bg-gray-50/50'}`} onClick={()=>setSelectedDeal(d)}>
             {isAdmin&&<td className="px-3 py-2.5 text-gray-600">{d.owner}</td>}
-            <td className="px-3 py-2.5 font-medium">{d.name}</td><td className="px-3 py-2.5 text-right">{fmt(d.predictedValue)}</td>
+            <td className="px-3 py-2.5 font-medium text-blue-700 hover:text-blue-900">{d.name}</td><td className="px-3 py-2.5 text-right">{fmt(d.predictedValue)}</td>
             <td className="px-3 py-2.5 text-center"><Badge text={d.pipeline||'—'} color={d.pipeline==='Warm'?'gold':d.pipeline==='Brave Digital'?'purple':'blue'}/></td>
             <td className="px-3 py-2.5 text-center text-xs">{d.closeWindow||'—'}</td>
             <td className="px-3 py-2.5 text-center">{d.inCurrentForecast?pct(d.chancePrimary):<span className="text-gray-400">0%</span>}</td>
@@ -140,14 +144,16 @@ export default function MyPipeline() {
           <th className="px-3 py-2.5 text-left font-semibold text-gray-600">Deal</th><th className="px-3 py-2.5 text-right font-semibold text-gray-600">Total</th>
           <th className="px-3 py-2.5 text-right font-semibold text-gray-600">1-Time</th><th className="px-3 py-2.5 text-right font-semibold text-gray-600">Onboard</th>
           <th className="px-3 py-2.5 text-right font-semibold text-gray-600">Ongoing</th><th className="px-3 py-2.5 text-center font-semibold text-gray-600">Pipe</th>
-          <th className="px-3 py-2.5 text-center font-semibold text-gray-600">Window</th><th className="px-3 py-2.5 text-center font-semibold text-gray-600">Close %</th>
-          <th className="px-3 py-2.5 text-center font-semibold text-gray-600">60d %</th>
-          <th className="px-3 py-2.5 text-right font-semibold text-gray-600">30d $</th><th className="px-3 py-2.5 text-right font-semibold text-gray-600">60d $</th>
+          <th className="px-3 py-2.5 text-center font-semibold text-gray-600">Window</th>
+          <th className="px-3 py-2.5 text-center font-semibold text-gray-600"><CalcTooltip formula="Primary close probability within the 30-day window">Close %</CalcTooltip></th>
+          <th className="px-3 py-2.5 text-center font-semibold text-gray-600"><CalcTooltip formula="Fallback probability for extended 60-day window">60d %</CalcTooltip></th>
+          <th className="px-3 py-2.5 text-right font-semibold text-gray-600"><CalcTooltip formula="Total Value x Close %\nOnly counted for 30-Day window deals">30d $</CalcTooltip></th>
+          <th className="px-3 py-2.5 text-right font-semibold text-gray-600"><CalcTooltip formula="30-Day window: Value x Fallback %\n60-Day window: Value x Primary %">60d $</CalcTooltip></th>
           <th className="px-3 py-2.5 text-center font-semibold text-gray-600">Open</th><th className="px-3 py-2.5 text-center font-semibold text-gray-600">Status</th>
         </tr></thead><tbody>
-          {pOpen.map((d,i)=>(<tr key={d.id} className={`table-row-hover ${!d.inCurrentForecast?'opacity-50':''} ${i%2===0?'bg-white':'bg-gray-50/50'}`}>
+          {pOpen.map((d,i)=>(<tr key={d.id} className={`table-row-hover cursor-pointer ${!d.inCurrentForecast?'opacity-50':''} ${i%2===0?'bg-white':'bg-gray-50/50'}`} onClick={()=>setSelectedDeal(d)}>
             {isAdmin&&<td className="px-3 py-2.5 text-gray-600">{d.owner}</td>}
-            <td className="px-3 py-2.5 font-medium">{d.name}</td><td className="px-3 py-2.5 text-right font-semibold">{fmt(d.totalValue)}</td>
+            <td className="px-3 py-2.5 font-medium text-blue-700 hover:text-blue-900">{d.name}</td><td className="px-3 py-2.5 text-right font-semibold">{fmt(d.totalValue)}</td>
             <td className="px-3 py-2.5 text-right text-gray-500">{fmt(d.oneTime)}</td><td className="px-3 py-2.5 text-right text-gray-500">{fmt(d.onboarding)}</td>
             <td className="px-3 py-2.5 text-right text-gray-500">{fmt(d.ongoing)}</td>
             <td className="px-3 py-2.5 text-center"><Badge text={d.pipeline||'—'} color={d.pipeline==='Warm'?'gold':d.pipeline==='Brave Digital'?'purple':'blue'}/></td>
